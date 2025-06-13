@@ -153,7 +153,20 @@
         let isListening = false;
         
         // キーワードリスト
-        const keywords = ['ヘイ マックス', 'ヘイマックス', 'hey max', 'ヘイ　マックス'];
+        const keywords = [
+            // 日本語のみ
+            'ヘイ マックス', 'ヘイマックス', 'ヘイ　マックス',
+            // 英語のみ
+            'hey max', 'Hey Max', 'HEY MAX', 'heymax',
+            // 日本語と英語の組み合わせ
+            'Hey マックス', 'Hey max', 'HEY マックス', 'hey マックス',
+            // 全角スペースバリエーション
+            'ヘイ　マックス', 'Hey　max', 'HEY　マックス',
+            // 全角英数字
+            'Ｈｅｙ　Ｍａｘ', 'Ｈｅｙ　ｍａｘ',
+            // その他のバリエーション
+            'ヘイ・マックス', 'Hey-Max', 'Hey_Max'
+        ];
         
         function updateStatus(micActive, listening) {
             const micStatus = document.getElementById('micStatus');
