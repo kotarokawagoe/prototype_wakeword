@@ -159,10 +159,6 @@
             'ねぇ マックス', 'ねぇ　マックス', 'ねぇマックス',
             'ネエ マックス', 'ネエ　マックス', 'ネエマックス',
             'ネェ マックス', 'ネェ　マックス', 'ネェマックス',
-            'ねい マックス', 'ねい　マックス', 'ねいマックス',
-            'ねぃ マックス', 'ねぃ　マックス', 'ねぃマックス',
-            'ネイ マックス', 'ネイ　マックス', 'ネイマックス',
-            'ネィ マックス', 'ネィ　マックス', 'ネィマックス',
             // 日本語と英語の組み合わせ（スペースバリエーション）
             'ねえ Max', 'ねえ　Max', 'ねえMax',
             'ねぇ Max', 'ねぇ　Max', 'ねぇMax',
@@ -221,15 +217,73 @@
         }
         
         function checkForKeywords(text) {
-            const lowerText = text.toLowerCase();
+            const normalizedText = text.toLowerCase()
+                .replace(/\s+/g, ' ')           // 複数スペースを単一スペースに
+                .replace(/[、。！？]/g, '')      // 句読点を除去
+                .trim();
+            
             for (let keyword of keywords) {
-                if (lowerText.includes(keyword.toLowerCase())) {
-                    addLog(`🎯 キーワード検出: "${keyword}" in "${text}"`);
+                const normalizedKeyword = keyword.toLowerCase()
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                
+                // 完全一致チェック
+                if (normalizedText === normalizedKeyword) {
+                    addLog(`🎯 キーワード検出(完全一致): "${keyword}" = "${text}"`);
+                    showKeywordAlert();
+                    return true;
+                }
+                
+                // 部分一致チェック（従来通り）
+                if (normalizedText.includes(normalizedKeyword)) {
+                    addLog(`🎯 キーワード検出(部分一致): "${keyword}" in "${text}"`);
+                    showKeywordAlert();
+                    return true;
+                }
+                
+                // あいまい一致チェック（編集距離）
+                if (calculateSimilarity(normalizedText, normalizedKeyword) > 0.7) {
+                    addLog(`🎯 キーワード検出(あいまい一致): "${keyword}" ≈ "${text}"`);
                     showKeywordAlert();
                     return true;
                 }
             }
             return false;
+        }
+        
+        // 文字列の類似度を計算（レーベンシュタイン距離）
+        function calculateSimilarity(str1, str2) {
+            const matrix = [];
+            const len1 = str1.length;
+            const len2 = str2.length;
+            
+            if (len1 === 0) return len2 === 0 ? 1 : 0;
+            if (len2 === 0) return 0;
+            
+            for (let i = 0; i <= len2; i++) {
+                matrix[i] = [i];
+            }
+            
+            for (let j = 0; j <= len1; j++) {
+                matrix[0][j] = j;
+            }
+            
+            for (let i = 1; i <= len2; i++) {
+                for (let j = 1; j <= len1; j++) {
+                    if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                        matrix[i][j] = matrix[i - 1][j - 1];
+                    } else {
+                        matrix[i][j] = Math.min(
+                            matrix[i - 1][j - 1] + 1,
+                            matrix[i][j - 1] + 1,
+                            matrix[i - 1][j] + 1
+                        );
+                    }
+                }
+            }
+            
+            const maxLen = Math.max(len1, len2);
+            return (maxLen - matrix[len2][len1]) / maxLen;
         }
         
         function startListening() {
@@ -243,9 +297,16 @@
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 recognition = new SpeechRecognition();
                 
+                // より精度を高める設定
                 recognition.continuous = true;
                 recognition.interimResults = true;
                 recognition.lang = 'ja-JP';
+                recognition.maxAlternatives = 3; // 複数の候補を取得
+                
+                // 音声認識の感度を調整（ブラウザによっては効果あり）
+                if (recognition.serviceURI) {
+                    recognition.serviceURI = 'builtin://speech.googleapis.com';
+                }
                 
                 recognition.onstart = function() {
                     isListening = true;
@@ -260,22 +321,33 @@
                     let interimTranscript = '';
                     
                     for (let i = event.resultIndex; i < event.results.length; i++) {
-                        const transcript = event.results[i][0].transcript;
-                        if (event.results[i].isFinal) {
-                            finalTranscript += transcript;
-                        } else {
-                            interimTranscript += transcript;
+                        // 複数の候補をチェック
+                        for (let j = 0; j < event.results[i].length; j++) {
+                            const transcript = event.results[i][j].transcript;
+                            const confidence = event.results[i][j].confidence;
+                            
+                            if (event.results[i].isFinal) {
+                                if (j === 0) finalTranscript += transcript;
+                                addLog(`📊 候補${j+1}: "${transcript}" (信頼度: ${confidence ? confidence.toFixed(2) : 'N/A'})`);
+                                
+                                // 全ての候補でキーワードチェック
+                                if (checkForKeywords(transcript)) {
+                                    break; // キーワードが見つかったら他の候補は無視
+                                }
+                            } else {
+                                if (j === 0) interimTranscript += transcript;
+                                // 暫定結果でもキーワードチェック（感度向上）
+                                checkForKeywords(transcript);
+                            }
                         }
                     }
                     
                     if (finalTranscript) {
-                        addLog(`📝 認識結果: "${finalTranscript}"`);
-                        checkForKeywords(finalTranscript);
+                        addLog(`📝 最終認識結果: "${finalTranscript}"`);
                     }
                     
                     if (interimTranscript) {
                         addLog(`🔄 認識中: "${interimTranscript}"`);
-                        checkForKeywords(interimTranscript);
                     }
                 };
                 
